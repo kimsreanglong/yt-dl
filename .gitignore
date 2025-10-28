@@ -1,0 +1,12 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Environment files
+.env
+cookies.txt
+app/cookies.txt
+
+# Temp files
+*.tmp
+*.log
