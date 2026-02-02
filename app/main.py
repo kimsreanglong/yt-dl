@@ -16,6 +16,15 @@ COOKIES_FILE = BASE_DIR / "cookies.txt"   # your cookies file
 TEMPLATES_DIR = BASE_DIR / "templates"
 STATIC_DIR = BASE_DIR / "static"
 
+print("🔍 Checking cookies file...")
+print("📄 Path:", COOKIES_FILE)
+print("✅ Exists:", COOKIES_FILE.exists())
+print(
+    "📦 Size:",
+    COOKIES_FILE.stat().st_size if COOKIES_FILE.exists() else "N/A"
+)
+
+
 # === FastAPI App ===
 app = FastAPI()
 
