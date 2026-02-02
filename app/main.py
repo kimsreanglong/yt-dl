@@ -1,8 +1,8 @@
 import os
+import re
 import tempfile
-import subprocess
 from pathlib import Path
-from fastapi import FastAPI, Request, Form, HTTPException
+from fastapi import FastAPI, Request, Form, HTTPException, Query
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader, select_autoescape
@@ -63,25 +63,27 @@ def download_audio_with_cookies(url: str, codec: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Download failed: {e}")
 
+    # Find downloaded file
     file_path = next(job_dir.glob(f"*.{codec}"), None)
     if not file_path:
         raise HTTPException(status_code=500, detail="Conversion failed.")
 
-    # Rename the final file
-    title = info.get("title", "downloaded_audio").replace("/", "_")
-    final_name = f"{title}.{codec}"
+    # Sanitize filename
+    title = info.get("title", "downloaded_audio")
+    safe_title = re.sub(r'[\\/*?:"<>|]', "_", title)
+    final_name = f"{safe_title}.{codec}"
     final_path = job_dir / final_name
+
+    # Rename file
     file_path.rename(final_path)
 
     return final_name, job_dir, title
-
 
 # === Routes ===
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     tpl = templates.get_template("index.html")
     return HTMLResponse(tpl.render())
-
 
 @app.post("/download")
 async def download_youtube(url: str = Form(...), format: str = Form(...)):
@@ -97,16 +99,25 @@ async def download_youtube(url: str = Form(...), format: str = Form(...)):
             {
                 "title": title,
                 "format": codec.upper(),
-                "download_url": f"/download_file/{final_name}?job_dir={job_dir.name}",
+                # ✅ Download URL uses query parameters (safe for Unicode & spaces)
+                "download_url": f"/download_file?filename={final_name}&job_dir={job_dir.name}",
             }
         )
     )
 
-
-@app.get("/download_file/{filename}")
-async def serve_file(filename: str, job_dir: str):
+@app.get("/download_file")
+async def serve_file(
+    filename: str = Query(...),
+    job_dir: str = Query(...)
+):
     folder = DOWNLOAD_DIR / job_dir
     file_path = folder / filename
+
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found.")
-    return FileResponse(str(file_path), filename=filename, media_type="audio/mpeg")
+
+    return FileResponse(
+        str(file_path),
+        filename=filename,
+        media_type="audio/mpeg"
+    )
