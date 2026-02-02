@@ -14,7 +14,7 @@ from yt_dlp import YoutubeDL
 
 BASE_DIR = Path(__file__).resolve().parent
 
-# 🔐 Render Secret File location
+# 🔐 Render Secret File location (must match Render secret file)
 COOKIES_FILE = Path("/etc/secrets/cookies.txt")
 
 TEMPLATES_DIR = BASE_DIR / "templates"
@@ -40,10 +40,23 @@ templates = Environment(
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # ======================================================
+# Debug Endpoint (Render cookies check)
+# ======================================================
+
+@app.get("/debug/cookies")
+def debug_cookies():
+    return {
+        "exists": COOKIES_FILE.exists(),
+        "size": COOKIES_FILE.stat().st_size if COOKIES_FILE.exists() else 0,
+        "path": str(COOKIES_FILE),
+    }
+
+# ======================================================
 # Helper: Download Audio via yt-dlp
 # ======================================================
 
 def download_audio_with_cookies(url: str, codec: str):
+    # Create unique temporary folder
     job_dir = Path(tempfile.mkdtemp(prefix="yt_", dir=str(DOWNLOAD_DIR)))
 
     quality = "192" if codec == "mp3" else "0"
@@ -63,7 +76,7 @@ def download_audio_with_cookies(url: str, codec: str):
         ],
     }
 
-    # ✅ Attach cookies ONLY if valid
+    # ✅ Attach cookies ONLY if file exists and non-empty
     if COOKIES_FILE.exists() and COOKIES_FILE.stat().st_size > 0:
         ydl_opts["cookiefile"] = str(COOKIES_FILE)
 
@@ -76,7 +89,7 @@ def download_audio_with_cookies(url: str, codec: str):
             detail="YouTube blocked this request. Cookies may be missing or expired."
         )
 
-    # Find output file
+    # Find downloaded file
     file_path = next(job_dir.glob(f"*.{codec}"), None)
     if not file_path:
         raise HTTPException(status_code=500, detail="Audio conversion failed.")
@@ -87,6 +100,7 @@ def download_audio_with_cookies(url: str, codec: str):
     final_name = f"{safe_title}.{codec}"
     final_path = job_dir / final_name
 
+    # Rename downloaded file to safe name
     file_path.rename(final_path)
 
     return final_name, job_dir.name, title
@@ -118,11 +132,7 @@ async def download_youtube(
             {
                 "title": title,
                 "format": codec.upper(),
-                "download_url": (
-                    f"/download_file"
-                    f"?filename={final_name}"
-                    f"&job_dir={job_dir}"
-                ),
+                "download_url": f"/download_file?filename={final_name}&job_dir={job_dir}",
             }
         )
     )
